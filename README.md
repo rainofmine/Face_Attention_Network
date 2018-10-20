@@ -88,5 +88,5 @@ Attention map at different level (P3~P7)
 
 ## Reference
 
+- [Focal Loss for Dense Object Detection](https://arxiv.org/abs/1708.02002)
 - [Face Attention Network: An Effective Face Detector for the Occluded Faces](https://arxiv.org/abs/1711.07246)
-- [Repulsion Loss: Detecting Pedestrians in a Crowd](https://arxiv.org/abs/1711.07752)
