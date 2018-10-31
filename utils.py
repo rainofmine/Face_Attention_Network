@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-#from deformable.modules import ConvOffset2d
+
 
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
@@ -52,104 +52,6 @@ class Bottleneck(nn.Module):
         self.bn2 = nn.BatchNorm2d(planes)
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * 4)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-class BottleneckDeform(nn.Module):
-    expansion = 4
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BottleneckDeform, self).__init__()
-        num_deformable_groups = 4
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.offset = nn.Conv2d(planes,
-                                num_deformable_groups * 2 * 3 * 3,
-                                kernel_size=(3, 3),
-                                stride=(stride, stride),
-                                padding=(1, 1),
-                                bias=False)
-        self.conv2 = ConvOffset2d(planes,
-                                  planes, (3, 3),
-                                  stride=stride,
-                                  padding=1,
-                                  num_deformable_groups=num_deformable_groups)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes * 4)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        offset = self.offset(out)
-        out = self.conv2(out, offset)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-class BottleneckAtrous(nn.Module):
-    expansion = 4
-
-    def __init__(self, inplanes, planes, stride=1,  dilation=1, downsample=None):
-        super(BottleneckAtrous, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, stride=stride, bias=False) # change
-        self.bn1 = nn.BatchNorm2d(planes)
-        #for i in self.bn1.parameters():
-        #    i.requires_grad = False
-        padding = 1
-        if dilation == 2:
-            padding = 2
-        elif dilation == 4:
-            padding = 4
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1,
-                               padding=padding, bias=False, dilation = dilation)
-        self.bn2 = nn.BatchNorm2d(planes)
-        #for i in self.bn2.parameters():
-        #    i.requires_grad = False
-        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes * 4)
-        #for i in self.bn3.parameters():
-        #    i.requires_grad = False
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
