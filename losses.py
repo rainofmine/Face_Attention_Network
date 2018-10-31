@@ -204,7 +204,7 @@ class LevelAttention_loss(nn.Module):
                 attention_map = attention_mask[id][j, 0, :, :]
 
                 min_area = (2 ** (id + 5)) ** 2 * 0.5
-                max_area = (2 ** (id + 5) * 1.58) ** 2 * 6
+                max_area = (2 ** (id + 5) * 1.58) ** 2 * 2
 
                 level_bbox_indice1 = torch.ge(bbox_area, min_area)
                 level_bbox_indice2 = torch.le(bbox_area, max_area)
