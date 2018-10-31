@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.utils.model_zoo as model_zoo
 from torch.nn import init
-from utils import BasicBlock, Bottleneck, BottleneckDeform, BBoxTransform, ClipBoxes
+from utils import BasicBlock, Bottleneck, BBoxTransform, ClipBoxes
 from anchors import Anchors
 import losses
 from lib.nms.pth_nms import pth_nms
