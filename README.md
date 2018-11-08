@@ -17,13 +17,9 @@ Install packages.
 
 ```
 sudo apt-get install tk-dev python-tk
-
 pip install cffi
-
 pip install cython
-
 pip install pandas
-
 pip install tensorboardX
 ```
 
