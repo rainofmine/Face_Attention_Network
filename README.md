@@ -59,7 +59,7 @@ face 0
 
 ## Pretrained Model
 
-We use resnet18, 34, 50, 101, 152 as the backbone. You should download them and put them to '/weight'.
+We use resnet18, 34, 50, 101, 152 as the backbone. You should download them and put them to `/weight`.
 
 - resnet18: [https://download.pytorch.org/models/resnet18-5c106cde.pth](https://download.pytorch.org/models/resnet18-5c106cde.pth)
 - resnet34: [https://download.pytorch.org/models/resnet34-333f7ec4.pth](https://download.pytorch.org/models/resnet34-333f7ec4.pth)
