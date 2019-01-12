@@ -4,9 +4,10 @@ import torch.nn as nn
 
 
 class Anchors(nn.Module):
-    def __init__(self, pyramid_levels=None, strides=None, sizes=None, ratios=None, scales=None):
+    def __init__(self, pyramid_levels=None, strides=None, sizes=None, ratios=None, scales=None, is_cuda=True):
         super(Anchors, self).__init__()
 
+        self.is_cuda = is_cuda
         if pyramid_levels is None:
             self.pyramid_levels = [3, 4, 5, 6, 7]
         if strides is None:
@@ -34,8 +35,11 @@ class Anchors(nn.Module):
             all_anchors = np.append(all_anchors, shifted_anchors, axis=0)
 
         all_anchors = np.expand_dims(all_anchors, axis=0)
+        all_anchors = torch.from_numpy(all_anchors.astype(np.float32))
+        if self.is_cuda:
+            all_anchors = all_anchors.cuda()
 
-        return torch.from_numpy(all_anchors.astype(np.float32)).cuda()
+        return all_anchors
 
 
 def generate_anchors(base_size=16, ratios=None, scales=None):

@@ -218,14 +218,18 @@ class BottleneckCBAM(nn.Module):
 
 
 class BBoxTransform(nn.Module):
-    def __init__(self, mean=None, std=None):
+    def __init__(self, mean=None, std=None, is_cuda=True):
         super(BBoxTransform, self).__init__()
         if mean is None:
-            self.mean = torch.from_numpy(np.array([0, 0, 0, 0]).astype(np.float32)).cuda()
+            self.mean = torch.from_numpy(np.array([0, 0, 0, 0]).astype(np.float32))
+            if is_cuda:
+                self.mean = self.mean.cuda()
         else:
             self.mean = mean
         if std is None:
-            self.std = torch.from_numpy(np.array([0.1, 0.1, 0.2, 0.2]).astype(np.float32)).cuda()
+            self.std = torch.from_numpy(np.array([0.1, 0.1, 0.2, 0.2]).astype(np.float32))
+            if is_cuda:
+                self.std = self.std.cuda()
         else:
             self.std = std
 

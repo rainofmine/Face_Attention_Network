@@ -106,7 +106,8 @@ def main(args=None):
 
     print(retinanet)
     retinanet = torch.nn.DataParallel(retinanet, device_ids=[0])
-    retinanet.cuda()
+    if is_cuda:
+        retinanet.cuda()
 
     retinanet.training = True
 
@@ -138,8 +139,13 @@ def main(args=None):
 
             optimizer.zero_grad()
 
-            classification_loss, regression_loss, mask_loss = retinanet(
-                [data['img'].cuda().float(), data['annot'].cuda()])
+            img_data = data['img'].float()
+            annot_data = data['annot']
+            if is_cuda:
+                img_data = img_data.cuda()
+                annot_data = annot_data.cuda()
+
+            classification_loss, regression_loss, mask_loss = retinanet([img_data, annot_data])
 
             classification_loss = classification_loss.mean()
             regression_loss = regression_loss.mean()
@@ -177,7 +183,7 @@ def main(args=None):
         if parser.wider_val is not None:
             print('Evaluating dataset')
 
-            mAP = evaluate(dataset_val, retinanet)
+            mAP = evaluate(dataset_val, retinanet, is_cuda=is_cuda)
             f_map.write('mAP:{}, epoch:{}'.format(mAP[0][0], epoch_num))
             f_map.write('\n')
 

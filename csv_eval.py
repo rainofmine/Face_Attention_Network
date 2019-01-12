@@ -57,7 +57,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100):
+def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100, is_cuda=True):
     """ Get the detections from the retinanet using the generator.
     The result is a list of lists such that the size is:
         all_detections[num_images][num_classes] = detections[num_detections, 4 + num_classes]
@@ -66,6 +66,7 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
         retinanet           : The retinanet to run on the images.
         score_threshold : The score confidence threshold to use.
         max_detections  : The maximum number of detections to use per image.
+        is_cuda         : CUDA available
     # Returns
         A list of lists containing the detections for each image in the generator.
     """
@@ -80,7 +81,10 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
             scale = data['scale']
 
             # run network
-            scores, labels, boxes = retinanet(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+            img_data = data['img'].permute(2, 0, 1).float().unsqueeze(dim=0)
+            if is_cuda:
+                img_data = img_data.cuda()
+            scores, labels, boxes = retinanet(img_data)
             if isinstance(scores, torch.Tensor):
                 scores = scores.cpu().numpy()
                 labels = labels.cpu().numpy()
@@ -148,6 +152,7 @@ def evaluate(
         iou_threshold=0.5,
         score_threshold=0.05,
         max_detections=100,
+        is_cuda=True,
         save_path=None
 ):
     """ Evaluate a given dataset using a given retinanet.
@@ -157,6 +162,7 @@ def evaluate(
         iou_threshold   : The threshold used to consider when a detection is positive or negative.
         score_threshold : The score confidence threshold to use for detections.
         max_detections  : The maximum number of detections to use per image.
+        is_cuda         : CUDA available
         save_path       : The path to save images with visualized detections to.
     # Returns
         A dict mapping class names to mAP scores.
@@ -165,7 +171,7 @@ def evaluate(
     # gather all detections and annotations
 
     all_detections = _get_detections(generator, retinanet, score_threshold=score_threshold,
-                                     max_detections=max_detections)
+                                     max_detections=max_detections, is_cuda=is_cuda)
     all_annotations = _get_annotations(generator)
 
     average_precisions = {}

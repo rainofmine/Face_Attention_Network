@@ -188,7 +188,7 @@ class LevelAttentionModel(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, num_classes, block, layers):
+    def __init__(self, num_classes, block, layers, is_cuda=True):
         self.inplanes = 64
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -215,15 +215,15 @@ class ResNet(nn.Module):
         self.classificationModel = ClassificationModel(256, num_classes=num_classes)
         self.levelattentionModel = LevelAttentionModel(256)
 
-        self.anchors = Anchors()
+        self.anchors = Anchors(is_cuda=is_cuda)
 
-        self.regressBoxes = BBoxTransform()
+        self.regressBoxes = BBoxTransform(is_cuda=is_cuda)
 
         self.clipBoxes = ClipBoxes()
 
-        self.levelattentionLoss = LevelAttentionLoss()
+        self.levelattentionLoss = LevelAttentionLoss(is_cuda=is_cuda)
 
-        self.focalLoss = FocalLoss()
+        self.focalLoss = FocalLoss(is_cuda=is_cuda)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
