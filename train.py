@@ -13,6 +13,7 @@ from model_level_attention import resnet18, resnet34, resnet50, resnet101, resne
 from torch.utils.data import DataLoader
 from csv_eval import evaluate
 from dataloader import WIDERDataset, AspectRatioBasedSampler, collater, Resizer, Augmenter, Normalizer, CSVDataset
+from utils import create_dirs
 
 is_cuda = torch.cuda.is_available()
 print('CUDA available: {}'.format(is_cuda))
@@ -49,6 +50,7 @@ def main(args=None):
     parser.add_argument('--pretrained', help='pretrained model name in weight directory')
 
     parser = parser.parse_args(args)
+    create_dirs()
 
     # Create the data loaders
     if parser.wider_train is None:

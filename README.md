@@ -27,13 +27,6 @@ cd Face_Attention_Network/lib
 sh build.sh
 ```
 
-Create folders.
-
-```
-cd Face_Attention_Network/
-mkdir ckpt mAP_txt summary weight
-```
-
 ## Datasets
 
 ### CSV dataset

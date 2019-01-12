@@ -1,6 +1,12 @@
+import os
 import torch
 import torch.nn as nn
 import numpy as np
+
+
+def create_dirs():
+    for name in ['ckpt', 'mAP_txt', 'summary', 'weight']:
+        os.makedirs(name, exist_ok=True)
 
 
 def conv3x3(in_planes, out_planes, stride=1):
