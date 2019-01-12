@@ -7,7 +7,7 @@ Pytorch implementation of face attention network as described in [Face Attention
 ## Requirements
 
 - Python3
-- Pytorch0.4
+- Pytorch0.4.1
 - torchvision
 - tensorboardX
 
@@ -70,6 +70,14 @@ python train.py --csv_train <$path/train.txt> --csv_val <$path/val.txt> --csv_cl
 
 ```
 python train.py --wider_train <$path/wider_face_train_bbx_gt.txt> --wider_val <$path/wider_face_val_bbx_gt.txt> --wider_train_prefix <$path/WIDER_train/images> --wider_val_prefix <$path/WIDER_val/images> --depth <50> --model_name <model name to save>
+```
+
+## Detection
+
+Coordinates are printed to stdout as JSON array. Use optional --rect parameter to write copy of image with rectangles around found faces.
+
+```
+python detector.py --model <$path/model.pt> --image <$path/image.jpg> --rect <$path/image_faces_rectangles.jpg>
 ```
 
 ## Visualization Result
