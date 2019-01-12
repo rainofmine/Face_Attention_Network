@@ -46,8 +46,10 @@ def main(args=None):
     parser.add_argument('--epochs', help='Number of epochs', type=int, default=50)
     parser.add_argument('--batch_size', help='Batch size (default 2)', type=int, default=2)
 
-    parser.add_argument('--model_name', help='name of the model to save')
-    parser.add_argument('--pretrained', help='pretrained model name in weight directory')
+    parser.add_argument('--model_name', help='Name of the model to save')
+    parser.add_argument('--parallel', help='Run training with DataParallel', dest='parallel',
+                        default=False, action='store_true')
+    parser.add_argument('--pretrained', help='Pretrained model name in weight directory')
 
     parser = parser.parse_args(args)
     create_dirs()
@@ -75,7 +77,10 @@ def main(args=None):
 
     print('Loading training dataset')
     sampler = AspectRatioBasedSampler(dataset_train, batch_size=parser.batch_size, drop_last=False)
-    dataloader_train = DataLoader(dataset_train, num_workers=16, collate_fn=collater, batch_sampler=sampler)
+    if parser.parallel:
+        dataloader_train = DataLoader(dataset_train, num_workers=16, collate_fn=collater, batch_sampler=sampler)
+    else:
+        dataloader_train = DataLoader(dataset_train, collate_fn=collater, batch_sampler=sampler)
 
     # Create the model_pose_level_attention
     if parser.depth == 18:
@@ -122,7 +127,10 @@ def main(args=None):
     loss_hist = collections.deque(maxlen=500)
 
     retinanet.train()
-    retinanet.module.freeze_bn()
+    if parser.parallel:
+        retinanet.module.freeze_bn()
+    else:
+        retinanet.freeze_bn()
 
     print('Num training images: {}'.format(len(dataset_train)))
     f_map = open('./mAP_txt/' + parser.model_name + '.txt', 'a')
@@ -131,7 +139,10 @@ def main(args=None):
     for epoch_num in range(0, parser.epochs):
 
         retinanet.train()
-        retinanet.module.freeze_bn()
+        if parser.parallel:
+            retinanet.module.freeze_bn()
+        else:
+            retinanet.freeze_bn()
 
         epoch_loss = []
 
@@ -191,7 +202,10 @@ def main(args=None):
 
         scheduler.step(np.mean(epoch_loss))
 
-        torch.save(retinanet.module, './ckpt/' + parser.model_name + '_{}.pt'.format(epoch_num))
+        if parser.parallel:
+            torch.save(retinanet.module, './ckpt/' + parser.model_name + '_{}.pt'.format(epoch_num))
+        else:
+            torch.save(retinanet, './ckpt/' + parser.model_name + '_{}.pt'.format(epoch_num))
 
     retinanet.eval()
 
