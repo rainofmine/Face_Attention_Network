@@ -1,4 +1,3 @@
-import numpy as np
 import math
 import torch
 import torch.nn as nn
@@ -24,6 +23,7 @@ def calc_iou(a, b):
 
     return IoU
 
+
 def calc_iou_vis(a, b):
     area = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
 
@@ -39,8 +39,8 @@ def calc_iou_vis(a, b):
 
     return IoU
 
-def IoG(box_a, box_b):
 
+def IoG(box_a, box_b):
     inter_xmin = torch.max(box_a[:, 0], box_b[:, 0])
     inter_ymin = torch.max(box_a[:, 1], box_b[:, 1])
     inter_xmax = torch.min(box_a[:, 2], box_b[:, 2])
@@ -53,7 +53,9 @@ def IoG(box_a, box_b):
 
 
 class FocalLoss(nn.Module):
-    # def __init__(self):
+    def __init__(self, is_cuda=True):
+        super(FocalLoss, self).__init__()
+        self.is_cuda = is_cuda
 
     def forward(self, classifications, regressions, anchors, annotations):
         alpha = 0.25
@@ -78,8 +80,12 @@ class FocalLoss(nn.Module):
             bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
 
             if bbox_annotation.shape[0] == 0:
-                regression_losses.append(torch.tensor(0).float().cuda())
-                classification_losses.append(torch.tensor(0).float().cuda())
+                if self.is_cuda:
+                    regression_losses.append(torch.tensor(0).float().cuda())
+                    classification_losses.append(torch.tensor(0).float().cuda())
+                else:
+                    regression_losses.append(torch.tensor(0).float())
+                    classification_losses.append(torch.tensor(0).float())
 
                 continue
 
@@ -89,10 +95,10 @@ class FocalLoss(nn.Module):
 
             IoU_max, IoU_argmax = torch.max(IoU, dim=1)  # num_anchors x 1
 
-
             # compute the loss for classification
             targets = torch.ones(classification.shape) * -1
-            targets = targets.cuda()
+            if self.is_cuda:
+                targets = targets.cuda()
 
             targets[torch.lt(IoU_max, 0.4), :] = 0
 
@@ -106,7 +112,10 @@ class FocalLoss(nn.Module):
             targets[positive_indices, :] = 0
             targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
             try:
-                alpha_factor = torch.ones(targets.shape).cuda() * alpha
+                alpha_factor = torch.ones(targets.shape)
+                if self.is_cuda:
+                    alpha_factor = alpha_factor.cuda()
+                alpha_factor *=  alpha
             except:
                 print(targets)
                 print(targets.shape)
@@ -120,7 +129,10 @@ class FocalLoss(nn.Module):
             # cls_loss = focal_weight * torch.pow(bce, gamma)
             cls_loss = focal_weight * bce
 
-            cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
+            cls_zeros = torch.zeros(cls_loss.shape)
+            if self.is_cuda:
+                cls_zeros = cls_zeros.cuda()
+            cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, cls_zeros)
 
             classification_losses.append(cls_loss.sum() / torch.clamp(num_positive_anchors.float(), min=1.0))
 
@@ -151,9 +163,9 @@ class FocalLoss(nn.Module):
                 targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh))
                 targets = targets.t()
 
-                targets = targets / torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
-
-                negative_indices = 1 - positive_indices
+                targets = targets / torch.Tensor([[0.1, 0.1, 0.2, 0.2]])
+                if self.is_cuda:
+                    targets = targets.cuda()
 
                 regression_diff = torch.abs(targets - regression[positive_indices, :])
 
@@ -164,16 +176,21 @@ class FocalLoss(nn.Module):
                 )
                 regression_losses.append(regression_loss.mean())
             else:
-                regression_losses.append(torch.tensor(0).float().cuda())
+                if self.is_cuda:
+                    regression_losses.append(torch.tensor(0).float().cuda())
+                else:
+                    regression_losses.append(torch.tensor(0).float())
 
-        return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0,
-                                                                                                                 keepdim=True)
+        return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses) \
+            .mean(dim=0, keepdim=True)
 
 
-class LevelAttention_loss(nn.Module):
+class LevelAttentionLoss(nn.Module):
+    def __init__(self, is_cuda=True):
+        super(LevelAttentionLoss, self).__init__()
+        self.is_cuda = is_cuda
 
     def forward(self, img_batch_shape, attention_mask, bboxs):
-
         h, w = img_batch_shape[2], img_batch_shape[3]
 
         mask_losses = []
@@ -184,6 +201,13 @@ class LevelAttention_loss(nn.Module):
             bbox_annotation = bboxs[j, :, :]
             bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
 
+            if bbox_annotation.shape[0] == 0:
+                if self.is_cuda:
+                    mask_losses.append(torch.tensor(0).float().cuda())
+                else:
+                    mask_losses.append(torch.tensor(0).float())
+                continue
+
             cond1 = torch.le(bbox_annotation[:, 0], w)
             cond2 = torch.le(bbox_annotation[:, 1], h)
             cond3 = torch.le(bbox_annotation[:, 2], w)
@@ -193,10 +217,14 @@ class LevelAttention_loss(nn.Module):
             bbox_annotation = bbox_annotation[cond, :]
 
             if bbox_annotation.shape[0] == 0:
-                mask_losses.append(torch.tensor(0).float().cuda())
+                if self.is_cuda:
+                    mask_losses.append(torch.tensor(0).float().cuda())
+                else:
+                    mask_losses.append(torch.tensor(0).float())
                 continue
 
-            bbox_area = (bbox_annotation[:, 2] - bbox_annotation[:, 0]) * (bbox_annotation[:, 3] - bbox_annotation[:, 1])
+            bbox_area = (bbox_annotation[:, 2] - bbox_annotation[:, 0]) * (
+                    bbox_annotation[:, 3] - bbox_annotation[:, 1])
 
             mask_loss = []
             for id in range(len(attention_mask)):
@@ -213,7 +241,7 @@ class LevelAttention_loss(nn.Module):
 
                 level_bbox_annotation = bbox_annotation[level_bbox_indice, :].clone()
 
-                #level_bbox_annotation = bbox_annotation.clone()
+                # level_bbox_annotation = bbox_annotation.clone()
 
                 attention_h, attention_w = attention_map.shape
 
@@ -224,10 +252,10 @@ class LevelAttention_loss(nn.Module):
                     level_bbox_annotation[:, 3] *= attention_h / h
 
                 mask_gt = torch.zeros(attention_map.shape)
-                mask_gt = mask_gt.cuda()
+                if self.is_cuda:
+                    mask_gt = mask_gt.cuda()
 
                 for i in range(level_bbox_annotation.shape[0]):
-
                     x1 = max(int(level_bbox_annotation[i, 0]), 0)
                     y1 = max(int(level_bbox_annotation[i, 1]), 0)
                     x2 = min(math.ceil(level_bbox_annotation[i, 2]) + 1, attention_w)

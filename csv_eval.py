@@ -1,11 +1,6 @@
-from __future__ import print_function
-
 import numpy as np
-import json
-import os
 
 import torch
-
 
 
 def compute_overlap(a, b):
@@ -62,7 +57,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100, save_path=None):
+def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100, is_cuda=True):
     """ Get the detections from the retinanet using the generator.
     The result is a list of lists such that the size is:
         all_detections[num_images][num_classes] = detections[num_detections, 4 + num_classes]
@@ -71,27 +66,30 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
         retinanet           : The retinanet to run on the images.
         score_threshold : The score confidence threshold to use.
         max_detections  : The maximum number of detections to use per image.
-        save_path       : The path to save the images with visualized detections to.
+        is_cuda         : CUDA available
     # Returns
         A list of lists containing the detections for each image in the generator.
     """
     all_detections = [[None for i in range(dataset.num_classes())] for j in range(len(dataset))]
 
     retinanet.eval()
-    
+
     with torch.no_grad():
 
         for index in range(len(dataset)):
             data = dataset[index]
             scale = data['scale']
-            
+
             # run network
-            scores, labels, boxes = retinanet(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+            img_data = data['img'].permute(2, 0, 1).float().unsqueeze(dim=0)
+            if is_cuda:
+                img_data = img_data.cuda()
+            scores, labels, boxes = retinanet(img_data)
             if isinstance(scores, torch.Tensor):
                 scores = scores.cpu().numpy()
                 labels = labels.cpu().numpy()
-                boxes  = boxes.cpu().numpy()
-        
+                boxes = boxes.cpu().numpy()
+
                 # correct boxes for image scale
                 boxes /= scale
 
@@ -105,10 +103,11 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
                 scores_sort = np.argsort(-scores)[:max_detections]
 
                 # select detections
-                image_boxes      = boxes[indices[scores_sort], :]
-                image_scores     = scores[scores_sort]
-                image_labels     = labels[indices[scores_sort]]
-                image_detections = np.concatenate([image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
+                image_boxes = boxes[indices[scores_sort], :]
+                image_scores = scores[scores_sort]
+                image_labels = labels[indices[scores_sort]]
+                image_detections = np.concatenate(
+                    [image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
 
                 # copy detections to all_detections
                 for label in range(dataset.num_classes()):
@@ -148,12 +147,13 @@ def _get_annotations(generator):
 
 
 def evaluate(
-    generator,
-    retinanet,
-    iou_threshold=0.5,
-    score_threshold=0.05,
-    max_detections=100,
-    save_path=None
+        generator,
+        retinanet,
+        iou_threshold=0.5,
+        score_threshold=0.05,
+        max_detections=100,
+        is_cuda=True,
+        save_path=None
 ):
     """ Evaluate a given dataset using a given retinanet.
     # Arguments
@@ -162,30 +162,30 @@ def evaluate(
         iou_threshold   : The threshold used to consider when a detection is positive or negative.
         score_threshold : The score confidence threshold to use for detections.
         max_detections  : The maximum number of detections to use per image.
+        is_cuda         : CUDA available
         save_path       : The path to save images with visualized detections to.
     # Returns
         A dict mapping class names to mAP scores.
     """
 
-
-
     # gather all detections and annotations
 
-    all_detections     = _get_detections(generator, retinanet, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
-    all_annotations    = _get_annotations(generator)
+    all_detections = _get_detections(generator, retinanet, score_threshold=score_threshold,
+                                     max_detections=max_detections, is_cuda=is_cuda)
+    all_annotations = _get_annotations(generator)
 
     average_precisions = {}
 
     for label in range(generator.num_classes()):
         false_positives = np.zeros((0,))
-        true_positives  = np.zeros((0,))
-        scores          = np.zeros((0,))
+        true_positives = np.zeros((0,))
+        scores = np.zeros((0,))
         num_annotations = 0.0
 
         for i in range(len(generator)):
-            detections           = all_detections[i][label]
-            annotations          = all_annotations[i][label]
-            num_annotations     += annotations.shape[0]
+            detections = all_detections[i][label]
+            annotations = all_annotations[i][label]
+            num_annotations += annotations.shape[0]
             detected_annotations = []
 
             for d in detections:
@@ -193,20 +193,20 @@ def evaluate(
 
                 if annotations.shape[0] == 0:
                     false_positives = np.append(false_positives, 1)
-                    true_positives  = np.append(true_positives, 0)
+                    true_positives = np.append(true_positives, 0)
                     continue
 
-                overlaps            = compute_overlap(np.expand_dims(d, axis=0), annotations)
+                overlaps = compute_overlap(np.expand_dims(d, axis=0), annotations)
                 assigned_annotation = np.argmax(overlaps, axis=1)
-                max_overlap         = overlaps[0, assigned_annotation]
+                max_overlap = overlaps[0, assigned_annotation]
 
                 if max_overlap >= iou_threshold and assigned_annotation not in detected_annotations:
                     false_positives = np.append(false_positives, 0)
-                    true_positives  = np.append(true_positives, 1)
+                    true_positives = np.append(true_positives, 1)
                     detected_annotations.append(assigned_annotation)
                 else:
                     false_positives = np.append(false_positives, 1)
-                    true_positives  = np.append(true_positives, 0)
+                    true_positives = np.append(true_positives, 0)
 
         # no annotations -> AP for this class is 0 (is this correct?)
         if num_annotations == 0:
@@ -214,26 +214,25 @@ def evaluate(
             continue
 
         # sort by score
-        indices         = np.argsort(-scores)
+        indices = np.argsort(-scores)
         false_positives = false_positives[indices]
-        true_positives  = true_positives[indices]
+        true_positives = true_positives[indices]
 
         # compute false positives and true positives
         false_positives = np.cumsum(false_positives)
-        true_positives  = np.cumsum(true_positives)
+        true_positives = np.cumsum(true_positives)
 
         # compute recall and precision
-        recall    = true_positives / num_annotations
+        recall = true_positives / num_annotations
         precision = true_positives / np.maximum(true_positives + false_positives, np.finfo(np.float64).eps)
 
         # compute average precision
-        average_precision  = _compute_ap(recall, precision)
+        average_precision = _compute_ap(recall, precision)
         average_precisions[label] = average_precision, num_annotations
-    
+
     print('\nmAP:')
     for label in range(generator.num_classes()):
         label_name = generator.label_to_name(label)
         print('{}: {}'.format(label_name, average_precisions[label][0]))
-    
-    return average_precisions
 
+    return average_precisions
