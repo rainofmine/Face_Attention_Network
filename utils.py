@@ -8,6 +8,7 @@ def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -84,10 +85,10 @@ class SELayer(nn.Module):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
-                nn.Linear(channel, channel // reduction),
-                nn.ReLU(inplace=True),
-                nn.Linear(channel // reduction, channel),
-                nn.Sigmoid()
+            nn.Linear(channel, channel // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -95,6 +96,7 @@ class SELayer(nn.Module):
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
         return x * y
+
 
 class BottleneckSE(nn.Module):
     expansion = 4
@@ -137,10 +139,9 @@ class BottleneckSE(nn.Module):
         return out
 
 
-class CBAM_Module(nn.Module):
-
+class CBAMModule(nn.Module):
     def __init__(self, channels, reduction):
-        super(CBAM_Module, self).__init__()
+        super(CBAMModule, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1,
@@ -149,7 +150,7 @@ class CBAM_Module(nn.Module):
         self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1,
                              padding=0)
         self.sigmoid_channel = nn.Sigmoid()
-        self.conv_after_concat = nn.Conv2d(2, 1, kernel_size = 7, stride=1, padding = 3)
+        self.conv_after_concat = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3)
         self.sigmoid_spatial = nn.Sigmoid()
 
     def forward(self, x):
@@ -174,6 +175,7 @@ class CBAM_Module(nn.Module):
         x = module_input * x
         return x
 
+
 class BottleneckCBAM(nn.Module):
     expansion = 4
 
@@ -187,7 +189,7 @@ class BottleneckCBAM(nn.Module):
         self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * 4)
         self.relu = nn.ReLU(inplace=True)
-        self.se = CBAM_Module(planes * 4, reduction)
+        self.se = CBAMModule(planes * 4, reduction)
         self.downsample = downsample
         self.stride = stride
 
@@ -216,7 +218,6 @@ class BottleneckCBAM(nn.Module):
 
 
 class BBoxTransform(nn.Module):
-
     def __init__(self, mean=None, std=None):
         super(BBoxTransform, self).__init__()
         if mean is None:
@@ -229,11 +230,10 @@ class BBoxTransform(nn.Module):
             self.std = std
 
     def forward(self, boxes, deltas):
-
-        widths  = boxes[:, :, 2] - boxes[:, :, 0]
+        widths = boxes[:, :, 2] - boxes[:, :, 0]
         heights = boxes[:, :, 3] - boxes[:, :, 1]
-        ctr_x   = boxes[:, :, 0] + 0.5 * widths
-        ctr_y   = boxes[:, :, 1] + 0.5 * heights
+        ctr_x = boxes[:, :, 0] + 0.5 * widths
+        ctr_y = boxes[:, :, 1] + 0.5 * heights
 
         dx = deltas[:, :, 0] * self.std[0] + self.mean[0]
         dy = deltas[:, :, 1] * self.std[1] + self.mean[1]
@@ -242,8 +242,8 @@ class BBoxTransform(nn.Module):
 
         pred_ctr_x = ctr_x + dx * widths
         pred_ctr_y = ctr_y + dy * heights
-        pred_w     = torch.exp(dw) * widths
-        pred_h     = torch.exp(dh) * heights
+        pred_w = torch.exp(dw) * widths
+        pred_h = torch.exp(dh) * heights
 
         pred_boxes_x1 = pred_ctr_x - 0.5 * pred_w
         pred_boxes_y1 = pred_ctr_y - 0.5 * pred_h
@@ -256,12 +256,10 @@ class BBoxTransform(nn.Module):
 
 
 class ClipBoxes(nn.Module):
-
-    def __init__(self, width=None, height=None):
+    def __init__(self):
         super(ClipBoxes, self).__init__()
 
     def forward(self, boxes, img):
-
         batch_size, num_channels, height, width = img.shape
 
         boxes[:, :, 0] = torch.clamp(boxes[:, :, 0], min=0)
@@ -269,5 +267,5 @@ class ClipBoxes(nn.Module):
 
         boxes[:, :, 2] = torch.clamp(boxes[:, :, 2], max=width)
         boxes[:, :, 3] = torch.clamp(boxes[:, :, 3], max=height)
-      
+
         return boxes

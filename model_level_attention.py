@@ -1,73 +1,64 @@
 import torch.nn as nn
 import torch
 import math
-import time
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-import torch.utils.model_zoo as model_zoo
-from torch.nn import init
 from utils import BasicBlock, Bottleneck, BBoxTransform, ClipBoxes
 from anchors import Anchors
-import losses
+from losses import LevelAttentionLoss, FocalLoss
 from lib.nms.pth_nms import pth_nms
-from dataloader import UnNormalizer
-unnormalize = UnNormalizer()
 
 
 def nms(dets, thresh):
-    "Dispatch to either CPU or GPU NMS implementations.\
-    Accept dets as tensor"""
+    """Dispatch to either CPU or GPU NMS implementations. Accept dets as tensor"""
     return pth_nms(dets, thresh)
 
 
 class PyramidFeatures(nn.Module):
-    def __init__(self, C3_size, C4_size, C5_size, feature_size=256):
+    def __init__(self, c3_size, c4_size, c5_size, feature_size=256):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
-        self.P5_1 = nn.Conv2d(C5_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
-        self.P5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+        self.p5_1 = nn.Conv2d(c5_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.p5_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.p5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P5 elementwise to C4
-        self.P4_1 = nn.Conv2d(C4_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
-        self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+        self.p4_1 = nn.Conv2d(c4_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.p4_upsampled = nn.Upsample(scale_factor=2, mode='nearest')
+        self.p4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P4 elementwise to C3
-        self.P3_1 = nn.Conv2d(C3_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P3_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+        self.p3_1 = nn.Conv2d(c3_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.p3_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # "P6 is obtained via a 3x3 stride-2 conv on C5"
-        self.P6 = nn.Conv2d(C5_size, feature_size, kernel_size=3, stride=2, padding=1)
+        self.p6 = nn.Conv2d(c5_size, feature_size, kernel_size=3, stride=2, padding=1)
 
         # "P7 is computed by applying ReLU followed by a 3x3 stride-2 conv on P6"
-        self.P7_1 = nn.ReLU()
-        self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
+        self.p7_1 = nn.ReLU()
+        self.p7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
 
     def forward(self, inputs):
-        C3, C4, C5 = inputs
+        c3, c4, c5 = inputs
 
-        P5_x = self.P5_1(C5)
-        P5_upsampled_x = self.P5_upsampled(P5_x)
-        P5_x = self.P5_2(P5_x)
+        p5_x = self.p5_1(c5)
+        p5_upsampled_x = self.p5_upsampled(p5_x)
+        p5_x = self.p5_2(p5_x)
 
-        P4_x = self.P4_1(C4)
-        P4_x = P5_upsampled_x + P4_x
-        P4_upsampled_x = self.P4_upsampled(P4_x)
-        P4_x = self.P4_2(P4_x)
+        p4_x = self.p4_1(c4)
+        p4_x = p5_upsampled_x + p4_x
+        p4_upsampled_x = self.p4_upsampled(p4_x)
+        p4_x = self.p4_2(p4_x)
 
-        P3_x = self.P3_1(C3)
-        P3_x = P3_x + P4_upsampled_x
-        P3_x = self.P3_2(P3_x)
+        p3_x = self.p3_1(c3)
+        p3_x = p3_x + p4_upsampled_x
+        p3_x = self.p3_2(p3_x)
 
-        P6_x = self.P6(C5)
+        p6_x = self.p6(c5)
 
-        P7_x = self.P7_1(P6_x)
-        P7_x = self.P7_2(P7_x)
+        p7_x = self.p7_1(p6_x)
+        p7_x = self.p7_2(p7_x)
 
-        return [P3_x, P4_x, P5_x, P6_x, P7_x]
+        return [p3_x, p4_x, p5_x, p6_x, p7_x]
 
 
 class RegressionModel(nn.Module):
@@ -110,7 +101,7 @@ class RegressionModel(nn.Module):
 
 
 class ClassificationModel(nn.Module):
-    def __init__(self, num_features_in, num_anchors=9, num_classes=80, prior=0.01, feature_size=256):
+    def __init__(self, num_features_in, num_anchors=9, num_classes=80, feature_size=256):
         super(ClassificationModel, self).__init__()
 
         self.num_classes = num_classes
@@ -158,7 +149,6 @@ class ClassificationModel(nn.Module):
 
 
 class LevelAttentionModel(nn.Module):
-
     def __init__(self, num_features_in, feature_size=256):
         super(LevelAttentionModel, self).__init__()
 
@@ -198,7 +188,6 @@ class LevelAttentionModel(nn.Module):
 
 
 class ResNet(nn.Module):
-
     def __init__(self, num_classes, block, layers):
         self.inplanes = 64
         super(ResNet, self).__init__()
@@ -217,6 +206,8 @@ class ResNet(nn.Module):
         elif block == Bottleneck:
             fpn_sizes = [self.layer2[layers[1] - 1].conv3.out_channels, self.layer3[layers[2] - 1].conv3.out_channels,
                          self.layer4[layers[3] - 1].conv3.out_channels]
+        else:
+            raise Exception("Invalid block type")
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
 
@@ -230,9 +221,9 @@ class ResNet(nn.Module):
 
         self.clipBoxes = ClipBoxes()
 
-        self.levelattentionLoss = losses.LevelAttention_loss()
+        self.levelattentionLoss = LevelAttentionLoss()
 
-        self.focalLoss = losses.FocalLoss()
+        self.focalLoss = FocalLoss()
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -265,8 +256,7 @@ class ResNet(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers = [block(self.inplanes, planes, stride, downsample)]
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes))
@@ -274,17 +264,17 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def freeze_bn(self):
-        '''Freeze BatchNorm layers.'''
+        """Freeze BatchNorm layers."""
         for layer in self.modules():
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
     def forward(self, inputs):
-
         if self.training:
             img_batch, annotations = inputs
         else:
             img_batch = inputs
+            annotations = None
 
         x = self.conv1(img_batch)
         x = self.bn1(x)
@@ -321,8 +311,8 @@ class ResNet(nn.Module):
             mask_loss = self.levelattentionLoss(img_batch.shape, attention, annotations)
             return clc_loss, reg_loss, mask_loss
         else:
-            transformed_anchors = self.regressBoxes(anchors, regression)
-            transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
+            # transformed_anchors = self.regressBoxes(anchors, regression)
+            transformed_anchors = self.clipBoxes()
 
             scores = torch.max(classification, dim=2, keepdim=True)[0]
             scores_over_thresh = (scores > 0.05)[0, :, 0]
@@ -341,47 +331,21 @@ class ResNet(nn.Module):
             return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
 
 
-
-def resnet18(num_classes, **kwargs):
-    """Constructs a ResNet-18 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = ResNet(num_classes, BasicBlock, [2, 2, 2, 2], **kwargs)
-    return model
+def resnet18(num_classes):
+    return ResNet(num_classes, BasicBlock, [2, 2, 2, 2])
 
 
-def resnet34(num_classes, **kwargs):
-    """Constructs a ResNet-34 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = ResNet(num_classes, BasicBlock, [3, 4, 6, 3], **kwargs)
-    return model
+def resnet34(num_classes):
+    return ResNet(num_classes, BasicBlock, [3, 4, 6, 3])
 
 
-def resnet50(num_classes, **kwargs):
-    """Constructs a ResNet-50 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = ResNet(num_classes, Bottleneck, [3, 4, 6, 3], **kwargs)
-    return model
+def resnet50(num_classes):
+    return ResNet(num_classes, Bottleneck, [3, 4, 6, 3])
 
 
-def resnet101(num_classes, **kwargs):
-    """Constructs a ResNet-101 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = ResNet(num_classes, Bottleneck, [3, 4, 23, 3], **kwargs)
-    return model
+def resnet101(num_classes):
+    return ResNet(num_classes, Bottleneck, [3, 4, 23, 3])
 
 
-def resnet152(num_classes, **kwargs):
-    """Constructs a ResNet-152 model.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    model = ResNet(num_classes, Bottleneck, [3, 8, 36, 3], **kwargs)
-    return model
+def resnet152(num_classes):
+    return ResNet(num_classes, Bottleneck, [3, 8, 36, 3])

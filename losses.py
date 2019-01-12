@@ -1,4 +1,3 @@
-import numpy as np
 import math
 import torch
 import torch.nn as nn
@@ -24,6 +23,7 @@ def calc_iou(a, b):
 
     return IoU
 
+
 def calc_iou_vis(a, b):
     area = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
 
@@ -39,8 +39,8 @@ def calc_iou_vis(a, b):
 
     return IoU
 
-def IoG(box_a, box_b):
 
+def IoG(box_a, box_b):
     inter_xmin = torch.max(box_a[:, 0], box_b[:, 0])
     inter_ymin = torch.max(box_a[:, 1], box_b[:, 1])
     inter_xmax = torch.min(box_a[:, 2], box_b[:, 2])
@@ -88,7 +88,6 @@ class FocalLoss(nn.Module):
             IoU = calc_iou(anchor, bbox_annotation[:, :4])  # num_anchors x num_annotations
 
             IoU_max, IoU_argmax = torch.max(IoU, dim=1)  # num_anchors x 1
-
 
             # compute the loss for classification
             targets = torch.ones(classification.shape) * -1
@@ -166,14 +165,12 @@ class FocalLoss(nn.Module):
             else:
                 regression_losses.append(torch.tensor(0).float().cuda())
 
-        return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0,
-                                                                                                                 keepdim=True)
+        return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses) \
+            .mean(dim=0, keepdim=True)
 
 
-class LevelAttention_loss(nn.Module):
-
+class LevelAttentionLoss(nn.Module):
     def forward(self, img_batch_shape, attention_mask, bboxs):
-
         h, w = img_batch_shape[2], img_batch_shape[3]
 
         mask_losses = []
@@ -183,6 +180,10 @@ class LevelAttention_loss(nn.Module):
 
             bbox_annotation = bboxs[j, :, :]
             bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
+
+            if bbox_annotation.shape[0] == 0:
+                mask_losses.append(torch.tensor(0).float().cuda())
+                continue
 
             cond1 = torch.le(bbox_annotation[:, 0], w)
             cond2 = torch.le(bbox_annotation[:, 1], h)
@@ -196,7 +197,8 @@ class LevelAttention_loss(nn.Module):
                 mask_losses.append(torch.tensor(0).float().cuda())
                 continue
 
-            bbox_area = (bbox_annotation[:, 2] - bbox_annotation[:, 0]) * (bbox_annotation[:, 3] - bbox_annotation[:, 1])
+            bbox_area = (bbox_annotation[:, 2] - bbox_annotation[:, 0]) * (
+                    bbox_annotation[:, 3] - bbox_annotation[:, 1])
 
             mask_loss = []
             for id in range(len(attention_mask)):
@@ -213,7 +215,7 @@ class LevelAttention_loss(nn.Module):
 
                 level_bbox_annotation = bbox_annotation[level_bbox_indice, :].clone()
 
-                #level_bbox_annotation = bbox_annotation.clone()
+                # level_bbox_annotation = bbox_annotation.clone()
 
                 attention_h, attention_w = attention_map.shape
 
@@ -227,7 +229,6 @@ class LevelAttention_loss(nn.Module):
                 mask_gt = mask_gt.cuda()
 
                 for i in range(level_bbox_annotation.shape[0]):
-
                     x1 = max(int(level_bbox_annotation[i, 0]), 0)
                     y1 = max(int(level_bbox_annotation[i, 1]), 0)
                     x2 = min(math.ceil(level_bbox_annotation[i, 2]) + 1, attention_w)
